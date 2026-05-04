@@ -6,11 +6,14 @@ Personal finance dashboard. Mobile-friendly, single-user. Tracks expenses across
 
 ## Setup (one time, ~10 min)
 
-### 1. Database — Supabase (free)
+### 1. Database & auth — Supabase (free)
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. In the SQL Editor, paste and run [`supabase/schema.sql`](supabase/schema.sql).
 3. In **Project Settings → API**, copy the **Project URL** and **anon public** key.
+4. In **Authentication → Providers → Email**, leave "Email" enabled (magic link works out of the box).
+5. (Recommended for a single-user app) In **Authentication → Sign In / Up**, **disable "Allow new users to sign up"** AFTER you've signed in once yourself — this stops anyone else from creating an account against your project.
+6. In **Authentication → URL Configuration**, set your **Site URL** to your Vercel domain (and add `http://localhost:3000` to the redirect allowlist for local dev).
 
 ### 2. Local dev
 
@@ -30,12 +33,11 @@ Open http://localhost:3000.
 3. Add the same two env vars in the Vercel project settings.
 4. Deploy. Open the URL on your phone and add to home screen.
 
-## Notes on access control
+## Access control
 
-The included schema uses a permissive RLS policy because this is a single-user app and the anon key ships in client code. If you ever expose the URL publicly, anyone could write to your tables. Mitigations:
-
-- Keep the deployed URL private (don't share it).
-- Or add Supabase Auth and tighten the RLS policy to `auth.uid() = user_id`.
+- Auth: Supabase magic-link email. The app shows a sign-in screen until a session exists.
+- RLS: every row in `expenses` and `budgets` is keyed to `user_id`; policies enforce `auth.uid() = user_id` for select / insert / update / delete. Other users (if any existed) could not read or write your rows.
+- Lockout: after your first sign-in, disable new signups in Supabase auth settings (step 5 above) so nobody else can create an account against your project.
 
 ## Conventions
 

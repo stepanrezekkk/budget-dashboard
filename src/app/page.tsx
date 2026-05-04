@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { CATEGORIES, type Budget, type Category, type Expense } from "@/types";
 import { fmtMoney, monthRange } from "@/lib/format";
@@ -8,8 +9,37 @@ import { ExpenseForm } from "@/components/ExpenseForm";
 import { ExpenseList } from "@/components/ExpenseList";
 import { CategoryBreakdown } from "@/components/CategoryBreakdown";
 import { BudgetGrid } from "@/components/BudgetGrid";
+import { Login } from "@/components/Login";
 
 export default function Page() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (!authReady) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-sm text-mute">
+        Loading…
+      </main>
+    );
+  }
+  if (!session) return <Login />;
+  return <Dashboard userId={session.user.id} email={session.user.email ?? ""} />;
+}
+
+function Dashboard({ userId, email }: { userId: string; email: string }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [budgets, setBudgets] = useState<Record<Category, number>>(
     Object.fromEntries(CATEGORIES.map((c) => [c, 0])) as Record<Category, number>
@@ -66,6 +96,7 @@ export default function Page() {
     spent_on: string;
   }) => {
     const { error } = await supabase.from("expenses").insert({
+      user_id: userId,
       amount: input.amount,
       category: input.category,
       note: input.note || null,
@@ -90,12 +121,21 @@ export default function Page() {
   const setBudget = async (category: Category, monthly_limit: number) => {
     const { error } = await supabase
       .from("budgets")
-      .upsert({ category, monthly_limit, updated_at: new Date().toISOString() });
+      .upsert({
+        user_id: userId,
+        category,
+        monthly_limit,
+        updated_at: new Date().toISOString(),
+      });
     if (error) {
       setError(error.message);
       return;
     }
     setBudgets((b) => ({ ...b, [category]: monthly_limit }));
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
   };
 
   const monthName = new Date().toLocaleDateString("cs-CZ", {
@@ -145,8 +185,19 @@ export default function Page() {
         <ExpenseList expenses={expenses} loading={loading} onDelete={deleteExpense} />
       </section>
 
-      <footer className="mt-16 text-center text-xs text-mute">
-        {CATEGORIES.length} categories · {expenses.length} entries this month
+      <footer className="mt-16 flex flex-wrap items-center justify-between gap-2 text-center text-xs text-mute">
+        <span>
+          {CATEGORIES.length} categories · {expenses.length} entries this month
+        </span>
+        <span className="flex items-center gap-3">
+          <span className="truncate">{email}</span>
+          <button
+            onClick={signOut}
+            className="rounded border border-line px-2 py-1 transition hover:border-mute hover:text-ink"
+          >
+            Sign out
+          </button>
+        </span>
       </footer>
     </main>
   );
